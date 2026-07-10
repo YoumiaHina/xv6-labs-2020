@@ -149,6 +149,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->trace_mask = 0;
   p->state = UNUSED;
 }
 
@@ -276,6 +277,7 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+  np->trace_mask = p->trace_mask;
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -298,6 +300,23 @@ fork(void)
   release(&np->lock);
 
   return pid;
+}
+
+// Return the number of allocated process table entries.  Each entry's lock
+// makes the state snapshot race-free with allocation, exit, and wait.
+uint64
+proc_count(void)
+{
+  uint64 count = 0;
+  struct proc *p;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state != UNUSED)
+      count++;
+    release(&p->lock);
+  }
+  return count;
 }
 
 // Pass p's abandoned children to init.
