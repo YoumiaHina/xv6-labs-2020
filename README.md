@@ -22,11 +22,11 @@ entering supervisor mode. These changes do not alter the lab behavior.
 
 | # | Lab | Solution branch | Status |
 |---:|---|---|---|
-| 1 | Unix utilities | `sol-util` | In progress |
+| 1 | Unix utilities | `sol-util` | Verified: 100/100 |
 | 2 | System calls | `sol-syscall` | In progress |
 | 3 | Page tables | `sol-pgtbl` | In progress |
 | 4 | Traps | `sol-traps` | In progress |
-| 5 | Lazy allocation | `sol-lazy` | In progress |
+| 5 | Lazy allocation | `sol-lazy` | Verified: 119/119 |
 | 6 | Copy-on-write | `sol-cow` | In progress |
 | 7 | Multithreading | `sol-thread` | In progress |
 | 8 | Locks | `sol-lock` | In progress |
@@ -56,4 +56,3 @@ For interactive use, run `make qemu`. Exit QEMU with `Ctrl-a x`.
 - [Experiment report template](docs/REPORT_TEMPLATE.md)
 - [Defense runbook](docs/DEFENSE_RUNBOOK.md)
 - [Reproducible environment notes](docs/ENVIRONMENT.md)
-
