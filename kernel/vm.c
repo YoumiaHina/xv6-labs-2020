@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -180,10 +182,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
+    // Lazily reserved pages have no page-table entry and need no work.
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -315,9 +318,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -333,6 +336,38 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+}
+
+// Materialize one page in a range reserved by sbrk().  Return the
+// physical address of the page, or zero if va is not a valid lazy page.
+uint64
+uvmlazyalloc(pagetable_t pagetable, uint64 va)
+{
+  struct proc *p = myproc();
+  pte_t *pte;
+  char *mem;
+
+  if(p == 0 || pagetable != p->pagetable || va >= p->sz || va >= MAXVA)
+    return 0;
+
+  va = PGROUNDDOWN(va);
+  pte = walk(pagetable, va, 0);
+  if(pte != 0 && (*pte & PTE_V)){
+    // In particular, do not replace the non-user stack guard page.
+    if((*pte & PTE_U) == 0)
+      return 0;
+    return PTE2PA(*pte);
+  }
+
+  if((mem = kalloc()) == 0)
+    return 0;
+  memset(mem, 0, PGSIZE);
+  if(mappages(pagetable, va, PGSIZE, (uint64)mem,
+              PTE_W | PTE_R | PTE_X | PTE_U) != 0){
+    kfree(mem);
+    return 0;
+  }
+  return (uint64)mem;
 }
 
 // mark a PTE invalid for user access.
@@ -359,7 +394,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    if(pa0 == 0 && (pa0 = uvmlazyalloc(pagetable, va0)) == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
     if(n > len)
@@ -384,7 +419,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    if(pa0 == 0 && (pa0 = uvmlazyalloc(pagetable, va0)) == 0)
       return -1;
     n = PGSIZE - (srcva - va0);
     if(n > len)
@@ -411,7 +446,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    if(pa0 == 0 && (pa0 = uvmlazyalloc(pagetable, va0)) == 0)
       return -1;
     n = PGSIZE - (srcva - va0);
     if(n > max)

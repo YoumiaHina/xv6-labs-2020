@@ -194,6 +194,20 @@ w_satp(uint64 x)
   asm volatile("csrw satp, %0" : : "r" (x));
 }
 
+// Physical memory protection.  Modern QEMU requires machine mode to
+// explicitly grant supervisor mode access before mret.
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
 static inline uint64
 r_satp()
 {
