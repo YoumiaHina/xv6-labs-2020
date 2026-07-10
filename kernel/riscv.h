@@ -29,6 +29,21 @@ w_mstatus(uint64 x)
   asm volatile("csrw mstatus, %0" : : "r" (x));
 }
 
+// Physical Memory Protection configuration.  Recent QEMU versions reset
+// PMP to deny supervisor-mode access, so machine mode opens one TOR region
+// covering the physical address space before entering supervisor mode.
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
 // machine exception program counter, holds the
 // instruction address to which a return from
 // exception will go.

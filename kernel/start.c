@@ -33,6 +33,11 @@ start()
   // disable paging for now.
   w_satp(0);
 
+  // Permit supervisor mode to access all physical memory.  Older QEMU
+  // versions allowed this implicitly; current versions require a PMP entry.
+  w_pmpaddr0(0x3fffffffffffffull);
+  w_pmpcfg0(0xf);
+
   // delegate all interrupts and exceptions to supervisor mode.
   w_medeleg(0xffff);
   w_mideleg(0xffff);
