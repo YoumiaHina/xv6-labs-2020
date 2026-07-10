@@ -194,6 +194,18 @@ w_satp(uint64 x)
   asm volatile("csrw satp, %0" : : "r" (x));
 }
 
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
 static inline uint64
 r_satp()
 {

@@ -1,0 +1,9 @@
+With one thread, each insertion finishes before the next operation begins, so
+the bucket head cannot change between the lookup and the update.  With two
+threads, suppose both choose the same bucket and read the same old head H.
+Thread A allocates A, sets A->next to H, and stores A in the bucket head.
+Thread B, which still holds its stale snapshot H, then allocates B, sets
+B->next to H, and stores B in the bucket head.  B's final store overwrites A's
+head update, making A and its key unreachable.  A mutex per bucket makes the
+lookup-and-insert sequence atomic while still allowing operations on different
+buckets to proceed in parallel.
