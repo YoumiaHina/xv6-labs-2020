@@ -1,0 +1,17 @@
+1. Interpreting vmprint
+
+The root entry 0 leads to the lower-level tables for the process's low user
+virtual addresses.  At the leaf level, page 0 contains init's program text
+and data.  Page 1 is the deliberately inaccessible stack guard page, and
+page 2 contains the initial user stack, including the argv strings and
+pointers.  The high root entry leads to the mappings for the trapframe and
+the trampoline.  A user-mode process cannot read or write page 1 because
+its leaf PTE has PTE_U clear; that mapping is supervisor-only.
+
+2. Why copyin_new checks srcva + len < srcva
+
+The addition can wrap around the 64-bit address space.  For example, with a
+process size greater than 1, srcva = 1 and len = 0xffffffffffffffff make
+srcva + len wrap to 0.  Then srcva is below p->sz and the wrapped sum is also
+below p->sz, so the first two bounds checks do not reject it.  The wrapped
+sum is less than srcva, so the third check detects the overflow.

@@ -19,6 +19,7 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
+  pagetable_t kpagetable = 0, oldkpagetable;
   struct proc *p = myproc();
 
   begin_op();
@@ -102,6 +103,13 @@ exec(char *path, char **argv)
   // value, which goes in a0.
   p->trapframe->a1 = sp;
 
+  // Prepare the matching kernel table before committing either table, so a
+  // failed exec leaves the old process image fully usable.
+  if((kpagetable = proc_kpagetable(p)) == 0)
+    goto bad;
+  if(uvmcopyin(pagetable, kpagetable, 0, sz) < 0)
+    goto bad;
+
   // Save program name for debugging.
   for(last=s=path; *s; s++)
     if(*s == '/')
@@ -110,15 +118,28 @@ exec(char *path, char **argv)
     
   // Commit to the user image.
   oldpagetable = p->pagetable;
+  oldkpagetable = p->kpagetable;
   p->pagetable = pagetable;
+  p->kpagetable = kpagetable;
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
+
+  // exec is running on the process's kernel stack, which is mapped in both
+  // tables.  Switch before freeing the old page-table pages.
+  w_satp(MAKE_SATP(p->kpagetable));
+  sfence_vma();
+  kvmfree(oldkpagetable);
   proc_freepagetable(oldpagetable, oldsz);
+
+  if(p->pid == 1)
+    vmprint(p->pagetable);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
+  if(kpagetable)
+    kvmfree(kpagetable);
   if(pagetable)
     proc_freepagetable(pagetable, sz);
   if(ip){

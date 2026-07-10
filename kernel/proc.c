@@ -20,6 +20,7 @@ static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
+extern pagetable_t kernel_pagetable;
 
 // initialize the proc table at boot time.
 void
@@ -30,16 +31,6 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
   }
   kvminithart();
 }
@@ -107,6 +98,22 @@ allocproc(void)
 found:
   p->pid = allocpid();
 
+  // Allocate this process's kernel stack and map it only in this process's
+  // kernel page table.  The surrounding virtual page remains a guard page.
+  p->kstack = KSTACK((int)(p - proc));
+  p->kstack_pa = (uint64)kalloc();
+  if(p->kstack_pa == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  p->kpagetable = proc_kpagetable(p);
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
@@ -136,6 +143,15 @@ found:
 static void
 freeproc(struct proc *p)
 {
+  if(p->kpagetable){
+    kvmfree_user(p->kpagetable, p->sz);
+    kvmfree(p->kpagetable);
+  }
+  p->kpagetable = 0;
+  if(p->kstack_pa)
+    kfree((void *)p->kstack_pa);
+  p->kstack_pa = 0;
+  p->kstack = 0;
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -150,6 +166,21 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+}
+
+// Build a per-process kernel page table and install this process's stack.
+pagetable_t
+proc_kpagetable(struct proc *p)
+{
+  pagetable_t pagetable = kvmmake();
+  if(pagetable == 0)
+    return 0;
+  if(mappages(pagetable, p->kstack, PGSIZE, p->kstack_pa,
+              PTE_R | PTE_W) < 0){
+    kvmfree(pagetable);
+    return 0;
+  }
+  return pagetable;
 }
 
 // Create a user page table for a given process,
@@ -220,6 +251,8 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  if(uvmcopyin(p->pagetable, p->kpagetable, 0, p->sz) < 0)
+    panic("userinit: uvmcopyin");
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -238,16 +271,30 @@ userinit(void)
 int
 growproc(int n)
 {
-  uint sz;
+  uint64 sz;
   struct proc *p = myproc();
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    uint64 oldsz = sz;
+    if((sz = uvmalloc(p->pagetable, oldsz, oldsz + n)) == 0) {
       return -1;
     }
+    if(uvmcopyin(p->pagetable, p->kpagetable, oldsz, sz) < 0){
+      uvmdealloc(p->pagetable, sz, oldsz);
+      return -1;
+    }
+    sfence_vma();
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    uint64 newsz = sz + n;
+    if(newsz < sz){
+      if(PGROUNDUP(newsz) < PGROUNDUP(sz)){
+        uint64 npages = (PGROUNDUP(sz) - PGROUNDUP(newsz)) / PGSIZE;
+        uvmunmap(p->kpagetable, PGROUNDUP(newsz), npages, 0);
+        sfence_vma();
+      }
+      sz = uvmdealloc(p->pagetable, sz, newsz);
+    }
   }
   p->sz = sz;
   return 0;
@@ -274,6 +321,11 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+  if(uvmcopyin(np->pagetable, np->kpagetable, 0, np->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
 
   np->parent = p;
 
@@ -473,10 +525,14 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        w_satp(MAKE_SATP(kernel_pagetable));
+        sfence_vma();
         c->proc = 0;
 
         found = 1;
