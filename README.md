@@ -55,4 +55,5 @@ For interactive use, run `make qemu`. Exit QEMU with `Ctrl-a x`.
 
 - [Experiment report template](docs/REPORT_TEMPLATE.md)
 - [Defense runbook](docs/DEFENSE_RUNBOOK.md)
+- [Reproducible environment notes](docs/ENVIRONMENT.md)
 
