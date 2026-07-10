@@ -109,6 +109,10 @@ exec(char *path, char **argv)
   safestrcpy(p->name, last, sizeof(p->name));
     
   // Commit to the user image.
+  for(i = 0; i < NVMA; i++){
+    if(p->vma[i].used)
+      vmaunmap(p, &p->vma[i], p->vma[i].addr, p->vma[i].length);
+  }
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
   p->sz = sz;

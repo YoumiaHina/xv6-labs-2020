@@ -113,6 +113,7 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  memset(p->vma, 0, sizeof(p->vma));
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -290,6 +291,14 @@ fork(void)
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
+  // Recreate file-backed regions lazily in the child.
+  for(i = 0; i < NVMA; i++){
+    if(p->vma[i].used){
+      np->vma[i] = p->vma[i];
+      np->vma[i].file = filedup(p->vma[i].file);
+    }
+  }
+
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
@@ -343,6 +352,12 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  // Flush shared mappings and release their file references.
+  for(int i = 0; i < NVMA; i++){
+    if(p->vma[i].used)
+      vmaunmap(p, &p->vma[i], p->vma[i].addr, p->vma[i].length);
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

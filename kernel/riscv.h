@@ -29,6 +29,20 @@ w_mstatus(uint64 x)
   asm volatile("csrw mstatus, %0" : : "r" (x));
 }
 
+// Physical memory protection. Modern QEMU requires machine mode to grant
+// supervisor mode access explicitly before mret.
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
 // machine exception program counter, holds the
 // instruction address to which a return from
 // exception will go.
