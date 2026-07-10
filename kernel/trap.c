@@ -76,6 +76,20 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
+  // Count only timer interrupts taken while the process is executing in
+  // user mode.  Save the complete trapframe before redirecting epc, so that
+  // sigreturn can resume the interrupted instruction with every register
+  // intact.  alarm_active prevents nested handler invocations.
+  if(which_dev == 2 && p->alarm_interval > 0 && !p->alarm_active){
+    p->alarm_ticks++;
+    if(p->alarm_ticks >= p->alarm_interval){
+      p->alarm_ticks = 0;
+      p->alarm_active = 1;
+      p->alarm_trapframe = *(p->trapframe);
+      p->trapframe->epc = p->alarm_handler;
+    }
+  }
+
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
     yield();
@@ -217,4 +231,3 @@ devintr()
     return 0;
   }
 }
-

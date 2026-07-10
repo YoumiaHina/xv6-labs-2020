@@ -1,0 +1,23 @@
+1. RISC-V passes the first eight integer/pointer arguments in a0 through a7.
+   In main's call to printf, the value 13 is in a2 (a0 is the format-string
+   address and a1 is the value 12).
+
+2. There are no call instructions to f or g in main.  With optimization both
+   functions are inlined, and the compiler evaluates f(8)+1 to the constant
+   12 before calling printf.
+
+3. In this build, printf is located at 0x0000000000000626.  The precise
+   address is toolchain/build dependent and can be read from user/call.asm.
+
+4. The jalr instruction that calls printf is at 0x34, so ra contains 0x38,
+   the address of the instruction immediately following that jalr.
+
+5. The output is "He110 World".  57616 is 0xe110, which %x prints as e110;
+   i's little-endian byte sequence is 72 6c 64 00, or "rld".  On a
+   big-endian RISC-V, i should be 0x726c6400 to keep the same string.  The
+   integer 57616 does not need to change, because %x formats its numeric value
+   rather than interpreting its in-memory byte order.
+
+6. The text after "y=" is an indeterminate value: printf expects another
+   integer argument, but the caller supplied only 3.  printf therefore reads
+   whatever stale value happens to be in the next argument register (a2).

@@ -194,6 +194,20 @@ w_satp(uint64 x)
   asm volatile("csrw satp, %0" : : "r" (x));
 }
 
+// Physical memory protection.  xv6 opens one TOR region covering all of
+// physical memory before entering supervisor mode.
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
 static inline uint64
 r_satp()
 {
@@ -284,6 +298,14 @@ r_sp()
 {
   uint64 x;
   asm volatile("mv %0, sp" : "=r" (x) );
+  return x;
+}
+
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
   return x;
 }
 
