@@ -95,26 +95,79 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  //
-  // Your code here.
-  //
-  // the mbuf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after sending.
-  //
-  
+  acquire(&e1000_lock);
+
+  uint32 index = regs[E1000_TDT];
+  struct tx_desc *desc = &tx_ring[index];
+
+  // The device still owns this descriptor, so the ring is full.
+  if((desc->status & E1000_TXD_STAT_DD) == 0){
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // A completed descriptor's old packet is no longer used by DMA.
+  if(tx_mbufs[index])
+    mbuffree(tx_mbufs[index]);
+  tx_mbufs[index] = m;
+
+  desc->addr = (uint64)m->head;
+  desc->length = m->len;
+  desc->cso = 0;
+  desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  desc->status = 0;
+  desc->css = 0;
+  desc->special = 0;
+
+  // Publish the descriptor before advancing the hardware tail.
+  __sync_synchronize();
+  regs[E1000_TDT] = (index + 1) % TX_RING_SIZE;
+
+  release(&e1000_lock);
   return 0;
 }
 
 static void
 e1000_recv(void)
 {
-  //
-  // Your code here.
-  //
-  // Check for packets that have arrived from the e1000
-  // Create and deliver an mbuf for each packet (using net_rx()).
-  //
+  for(;;){
+    acquire(&e1000_lock);
+
+    uint32 index = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+    struct rx_desc *desc = &rx_ring[index];
+    if((desc->status & E1000_RXD_STAT_DD) == 0){
+      release(&e1000_lock);
+      break;
+    }
+
+    struct mbuf *m = rx_mbufs[index];
+    struct mbuf *replacement = mbufalloc(0);
+    int valid = replacement != 0 &&
+                (desc->status & E1000_RXD_STAT_EOP) != 0 &&
+                desc->errors == 0;
+
+    if(replacement){
+      rx_mbufs[index] = replacement;
+      desc->addr = (uint64)replacement->head;
+      m->len = desc->length;
+    }
+    // If allocation failed, return the existing buffer to the device and
+    // drop this packet. Either way, the descriptor is ready for DMA again.
+    desc->status = 0;
+    __sync_synchronize();
+    regs[E1000_RDT] = index;
+
+    release(&e1000_lock);
+
+    // net_rx() can generate an ARP reply and re-enter transmit, so it must
+    // run without the device lock held.
+    if(replacement){
+      if(valid)
+        net_rx(m);
+      else
+        mbuffree(m);
+    }
+  }
 }
 
 void
