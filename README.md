@@ -53,12 +53,6 @@ make grade
 
 For interactive use, run `make qemu`. Exit QEMU with `Ctrl-a x`.
 
-## Project documentation
+## Project report
 
-- [Experiment report template](docs/REPORT_TEMPLATE.md)
-- [Complete Chinese experiment report](docs/EXPERIMENT_REPORT.md)
-- [Verification matrix](docs/TEST_RESULTS.md)
-- [Defense runbook](docs/DEFENSE_RUNBOOK.md)
-- [Reproducible environment notes](docs/ENVIRONMENT.md)
-- [Submission-ready DOCX](deliverables/xv6及Labs课程项目实验报告（MIT2020）.docx)
-- [Submission-ready PDF](output/pdf/xv6及Labs课程项目实验报告（MIT2020）.pdf)
+- [Complete Chinese experiment report (DOCX)](deliverables/xv6及Labs课程项目实验报告（MIT2020）.docx)

@@ -1,3 +1,9 @@
 tmp/
+output/
+tools/
+fs.img
+kernel/
+mkfs/
+user/
 __pycache__/
 *.pyc
